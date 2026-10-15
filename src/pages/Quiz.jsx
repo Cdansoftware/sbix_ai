@@ -19,6 +19,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import SBIX from "../assets/logo_sbix.png";
 import { QUESTIONS_DATA } from "../pages/questionsData.js";
 
+// const API_URL = "https://sbix-aiquiz-backend.onrender.com";
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://sbix-aiquiz-backend.onrender.com";
+
 const Quiz = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,6 +42,7 @@ const Quiz = () => {
   const [submitted, setSubmitted] = useState(false);
   const [violations, setViolations] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   // Language State: 'en' | 'hi' | 'pa'
   const [language, setLanguage] = useState("en");
@@ -63,8 +68,6 @@ const Quiz = () => {
       navigate("/", { replace: true });
     }
   }, [TEAM_CODE, navigate]);
-
-  if (!TEAM_CODE) return null;
 
   // Sound Warning
   const playBeep = () => {
@@ -103,9 +106,87 @@ const Quiz = () => {
     }
   }, []);
 
-  const onQuizSubmitData = (submissionData) => {
-    console.log(JSON.stringify(submissionData, null, 2));
-  };
+  // Submit Handler
+  // const handleSubmit = useCallback(async () => {
+  //   if (submittedRef.current || isSubmitting) return;
+
+  //   submittedRef.current = true;
+  //   setIsSubmitting(true); // Start loading state
+
+  //   let correctCount = 0;
+  //   const currentAnswers = selectedAnswersRef.current;
+
+  //   const answersList = QUESTIONS_DATA.map((q, idx) => {
+  //     const selectedOptionIdx =
+  //       currentAnswers[idx] !== undefined ? currentAnswers[idx] : null;
+
+  //     if (selectedOptionIdx === q.answer) {
+  //       correctCount++;
+  //     }
+
+  //     return {
+  //       q: q.id,
+  //       sel: selectedOptionIdx,
+  //       cor: q.answer,
+  //     };
+  //   });
+
+  //   const compactPayload = {
+  //     tCode: TEAM_CODE,
+  //     score: Number(((correctCount / QUESTIONS_DATA.length) * 100).toFixed(1)),
+  //     ans: answersList,
+  //   };
+
+  //   const Default_Url = "https://sbix-aiquiz-backend.onrender.com";
+
+  //   try {
+  //     const response = await axios.post(
+  //       `${Default_Url}/api/quiz/submit`,
+  //       compactPayload,
+  //       {
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //         },
+  //       },
+  //     );
+
+  //     const data = response.data;
+  //     console.log("Quiz submitted successfully:", data);
+
+  //     setSubmitted(true);
+  //     sessionStorage.removeItem("teamCode");
+
+  //     if (typeof onQuizSubmitData === "function") {
+  //       onQuizSubmitData(compactPayload);
+  //     }
+
+  //     if (mediaStreamRef.current) {
+  //       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+  //     }
+
+  //     if (navigator.keyboard && navigator.keyboard.unlock) {
+  //       navigator.keyboard.unlock();
+  //     }
+
+  //     if (document.fullscreenElement) {
+  //       document.exitFullscreen().catch(() => {});
+  //     }
+  //   } catch (error) {
+  //     console.error("Quiz submission error:", error);
+
+  //     // Reset ref so the user can attempt submitting again on error
+  //     submittedRef.current = false;
+
+  //     const message =
+  //       error.response?.data?.message ||
+  //       error.message ||
+  //       "Unable to submit quiz. Please try again.";
+
+  //     toast.error(message);
+  //   } finally {
+  //     setIsSubmitting(false); // Stop loading state regardless of outcome
+  //   }
+  // }, [TEAM_CODE, isSubmitting, onQuizSubmitData]);
 
   // Submit Handler
   const handleSubmit = useCallback(async () => {
@@ -114,52 +195,27 @@ const Quiz = () => {
     submittedRef.current = true;
     setIsSubmitting(true); // Start loading state
 
-    let correctCount = 0;
     const currentAnswers = selectedAnswersRef.current;
 
-    const answersList = QUESTIONS_DATA.map((q, idx) => {
-      const selectedOptionIdx =
-        currentAnswers[idx] !== undefined ? currentAnswers[idx] : null;
-
-      if (selectedOptionIdx === q.answer) {
-        correctCount++;
-      }
-
-      return {
-        q: q.id,
-        sel: selectedOptionIdx,
-        cor: q.answer,
-      };
-    });
-
-    const compactPayload = {
+    // Only the chosen option is sent. Score, accuracy and time are
+    // calculated by the server, so nothing here can be tampered with.
+    const payload = {
       tCode: TEAM_CODE,
-      score: Number(((correctCount / QUESTIONS_DATA.length) * 100).toFixed(1)),
-      ans: answersList,
+      ans: QUESTIONS_DATA.map((q, idx) => ({
+        q: q.id,
+        sel: currentAnswers[idx] !== undefined ? currentAnswers[idx] : null,
+      })),
     };
 
-    const Default_Url = "https://sbix-aiquiz-backend.onrender.com";
-
     try {
-      const response = await axios.post(
-        `${Default_Url}/api/quiz/submit`,
-        compactPayload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
+      const response = await axios.post(`${API_URL}/api/quiz/submit`, payload, {
+        headers: { "Content-Type": "application/json" },
+      });
 
-      const data = response.data;
-      console.log("Quiz submitted successfully:", data);
+      console.log("Quiz submitted successfully:", response.data);
 
       setSubmitted(true);
       sessionStorage.removeItem("teamCode");
-
-      if (typeof onQuizSubmitData === "function") {
-        onQuizSubmitData(compactPayload);
-      }
 
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -187,7 +243,7 @@ const Quiz = () => {
     } finally {
       setIsSubmitting(false); // Stop loading state regardless of outcome
     }
-  }, [TEAM_CODE, isSubmitting, onQuizSubmitData]);
+  }, [TEAM_CODE, isSubmitting]);
 
   // Restored Countdown Timer
   useEffect(() => {
@@ -335,15 +391,51 @@ const Quiz = () => {
   }, [cameraGranted, submitted]);
 
   // Request Camera Access
+  // const requestCameraAccess = async () => {
+  //   setCameraError("");
+  //   try {
+  //     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  //       setCameraError("Camera feature is not supported in this browser.");
+  //       return;
+  //     }
+
+  //     const stream = await navigator.mediaDevices.getUserMedia({
+  //       video: {
+  //         facingMode: "user",
+  //         width: { ideal: 320 },
+  //         height: { ideal: 240 },
+  //       },
+  //       audio: false,
+  //     });
+
+  //     mediaStreamRef.current = stream;
+  //     setCameraGranted(true);
+
+  //     if (!document.fullscreenElement) {
+  //       await document.documentElement.requestFullscreen().catch(() => {});
+  //     }
+  //   } catch (err) {
+  //     console.error("Camera access failed:", err);
+  //     setCameraError(
+  //       "Camera access is mandatory to enter the proctored quiz. Please grant camera permission.",
+  //     );
+  //   }
+  // };
+
+  // Request Camera Access, then tell the server the quiz has started
   const requestCameraAccess = async () => {
+    if (isStarting) return;
     setCameraError("");
+    setIsStarting(true);
+    let stream = null;
+
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraError("Camera feature is not supported in this browser.");
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
           width: { ideal: 320 },
@@ -351,18 +443,42 @@ const Quiz = () => {
         },
         audio: false,
       });
-
-      mediaStreamRef.current = stream;
-      setCameraGranted(true);
-
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen().catch(() => {});
-      }
     } catch (err) {
       console.error("Camera access failed:", err);
       setCameraError(
         "Camera access is mandatory to enter the proctored quiz. Please grant camera permission.",
       );
+      setIsStarting(false);
+      return;
+    }
+
+    // Fullscreen must be requested right after the click, BEFORE the
+    // network call (the server can be slow to wake up on free hosting).
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen().catch(() => {});
+    }
+
+    try {
+      const res = await axios.post(`${API_URL}/api/quiz/start`, {
+        tCode: TEAM_CODE,
+      });
+
+      // Use the server's remaining time, so a refresh cannot reset the clock
+      setTimeLeft(res.data.remainingSec);
+      mediaStreamRef.current = stream;
+      setCameraGranted(true);
+    } catch (err) {
+      console.error("Quiz start failed:", err);
+      stream.getTracks().forEach((track) => track.stop());
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setCameraError(
+        err.response?.data?.message ||
+          "Could not reach the server. Please check your internet and try again.",
+      );
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -396,6 +512,8 @@ const Quiz = () => {
   };
 
   const currentQ = QUESTIONS_DATA[currentIdx];
+
+  if (!TEAM_CODE) return null;
 
   // STEP 1: Mandatory Camera Access Gate
   if (!cameraGranted) {
@@ -436,11 +554,27 @@ const Quiz = () => {
             </div>
           )}
 
-          <button
+          {/* <button
             onClick={requestCameraAccess}
             className="w-full py-3.5 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all flex items-center justify-center gap-2"
           >
             <Camera className="w-4 h-4" /> Allow Camera & Start Quiz
+          </button> */}
+
+          <button
+            onClick={requestCameraAccess}
+            disabled={isStarting}
+            className="w-full py-3.5 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all flex items-center justify-center gap-2"
+          >
+            {isStarting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Starting...
+              </>
+            ) : (
+              <>
+                <Camera className="w-4 h-4" /> Allow Camera & Start Quiz
+              </>
+            )}
           </button>
         </div>
       </div>

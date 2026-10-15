@@ -1,5 +1,28 @@
 // src/pages/questionsData.js
 
+export const allowedTeamCode = [
+  "SBIX-CHG-AQ-01", 
+  "SBIX-SHK-AQ-03",
+  "SBIX-BHT-AQ-11",
+  "SBIX-BHL-AQ-09",
+  "SBIX-GJR-AQ-21",
+  "SBIX-BLW-AQ-19",
+  "SBIX-BHL-AQ-12",
+  "SBIX-NSR-AQ-10",
+  "SBIX-BTH-AQ-17",
+  "SBIX-CNK-AQ-13",
+  "SBIX-KPR-AQ-08",
+  "SBIX-MOH-AQ-02",
+  "SBIX-FTB-AQ-04",
+  "SBIX-DLK-AQ-20",
+  "SBIX-KMP-AQ-06",
+  "SBIX-JNR-AQ-05",
+  "SBIX-BJK-AQ-15",
+  "SBIX-JJN-AQ-14",
+  "SBIX-GSP-AQ-07",
+  "SBIX-LDG-AQ-16"
+]
+
 export const QUESTIONS_DATA = [
   {
     id: 1,

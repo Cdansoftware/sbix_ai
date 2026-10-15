@@ -221,15 +221,43 @@ export default function InstructionPage({ onStartQuiz }) {
     }
   }, []);
 
-  const API = "https://sbix-aiquiz-backend.onrender.com";
+  // const API = "https://sbix-aiquiz-backend.onrender.com";
+  const API =
+    import.meta.env.VITE_API_URL || "https://sbix-aiquiz-backend.onrender.com";
 
   const [loading, setLoading] = useState(false); // add this with your other useState lines
 
-  const handleStart = async (e) => {
+  // 1. Define your allowed team codes array
+  const allowedTeamCode = [
+    "SBIX-CHG-AQ-01",
+    "SBIX-SHK-AQ-03",
+    "SBIX-BHT-AQ-11",
+    "SBIX-BHL-AQ-09",
+    "SBIX-GJR-AQ-21",
+    "SBIX-BLW-AQ-19",
+    "SBIX-BHL-AQ-12",
+    "SBIX-NSR-AQ-10",
+    "SBIX-BTH-AQ-17",
+    "SBIX-CNK-AQ-13",
+    "SBIX-KPR-AQ-08",
+    "SBIX-MOH-AQ-02",
+    "SBIX-FTB-AQ-04",
+    "SBIX-DLK-AQ-20",
+    "SBIX-KMP-AQ-06",
+    "SBIX-JNR-AQ-05",
+    "SBIX-BJK-AQ-15",
+    "SBIX-JJN-AQ-14",
+    "SBIX-GSP-AQ-07",
+    "SBIX-LDG-AQ-16",
+  ];
+
+  // Inside your InstructionPage component:
+  const handleStart = (e) => {
     e.preventDefault();
 
     const trimmedCode = teamCode.trim();
 
+    // 2. Check if input is empty
     if (!trimmedCode) {
       toast.error(t.errorEmptyCode || "Please enter a team code!");
       return;
@@ -238,13 +266,10 @@ export default function InstructionPage({ onStartQuiz }) {
     setError("");
     setLoading(true);
 
-    try {
-      const res = await fetch(
-        `${API}/api/quiz/check-code?tCode=${encodeURIComponent(trimmedCode)}`,
-      );
-      const data = await res.json();
-
-      if (res.ok && data.allowed) {
+    // Add a slight delay for smooth UX loading effect
+    setTimeout(() => {
+      // 3. Match against the allowedTeamCode array
+      if (allowedTeamCode.includes(trimmedCode)) {
         sessionStorage.setItem("teamCode", trimmedCode);
 
         if (typeof onStartQuiz === "function") {
@@ -252,19 +277,55 @@ export default function InstructionPage({ onStartQuiz }) {
         }
 
         navigate("/quiz", { state: { teamCode: trimmedCode, language: lang } });
-      } else if (res.status === 409) {
-        // 🚨 Shows the specific message returned by your backend API
-        toast.error(data.message || t.errorAlreadySubmitted);
       } else {
-        toast.error(data.message || t.errorGeneric);
+        // 4. Show error toast if code is invalid/not found in array
+        toast.error("Invalid Team Code! Please check your code and try again.");
       }
-    } catch (err) {
-      console.error("Check team code error:", err);
-      toast.error("Network error. Please check your connection.");
-    } finally {
+
       setLoading(false);
-    }
+    }, 400);
   };
+
+  // const handleStart = async (e) => {
+  //   e.preventDefault();
+
+  //   const trimmedCode = teamCode.trim();
+
+  //   if (!trimmedCode) {
+  //     toast.error(t.errorEmptyCode || "Please enter a team code!");
+  //     return;
+  //   }
+
+  //   setError("");
+  //   setLoading(true);
+
+  //   try {
+  //     const res = await fetch(
+  //       `${API}/api/quiz/check-code?tCode=${encodeURIComponent(trimmedCode)}`,
+  //     );
+  //     const data = await res.json();
+
+  //     if (res.ok && data.allowed) {
+  //       sessionStorage.setItem("teamCode", trimmedCode);
+
+  //       if (typeof onStartQuiz === "function") {
+  //         onStartQuiz({ teamCode: trimmedCode, language: lang });
+  //       }
+
+  //       navigate("/quiz", { state: { teamCode: trimmedCode, language: lang } });
+  //     } else if (res.status === 409) {
+  //       // 🚨 Shows the specific message returned by your backend API
+  //       toast.error(data.message || t.errorAlreadySubmitted);
+  //     } else {
+  //       toast.error(data.message || t.errorGeneric);
+  //     }
+  //   } catch (err) {
+  //     console.error("Check team code error:", err);
+  //     toast.error("Network error. Please check your connection.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   return (
     <div

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import {
   Lock,
@@ -20,14 +20,73 @@ import SBIX from "../assets/logo_sbix.png";
 import { QUESTIONS_DATA } from "./questionsData.js";
 
 const INITIAL_MOCK_SUBMISSIONS = [];
-const ADMIN_PASSWORD = "!Rauni&2026";
-const Default_url = "https://sbix-aiquiz-backend.onrender.com";
+// The admin password is NOT stored here any more. The server checks it.
+const Default_url =
+  import.meta.env.VITE_API_URL || "https://sbix-aiquiz-backend.onrender.com";
+
+// 85 -> "1m 25s"
+const formatDuration = (sec) =>
+  typeof sec === "number"
+    ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, "0")}s`
+    : "—";
+
+/**
+- Builds the leaderboard.
+- Order: 1) score (high first)  2) accuracy (high first)
+-        3) time taken (low first)  4) submission time (earlier first)
+- Teams that are equal on score, accuracy AND time share the same rank (tie).
+ */
+const buildLeaderboard = (submissions) => {
+  const enriched = submissions.map((s) => {
+    const answers = Array.isArray(s.ans) ? s.ans : [];
+    const attemptedCount = answers.filter(
+      (a) => a.sel !== null && a.sel !== undefined
+    ).length;
+    const correctCount = answers.filter(
+      (a) => a.sel !== null && a.sel !== undefined && a.sel === a.cor
+    ).length;
+    const accuracy = attemptedCount
+      ? Number(((correctCount / attemptedCount) * 100).toFixed(2))
+      : 0;
+    const timeTakenSec =
+      typeof s.timeTakenSec === "number" ? s.timeTakenSec : null;
+
+    return { ...s, attemptedCount, correctCount, accuracy, timeTakenSec };
+  });
+
+  enriched.sort(
+    (a, b) =>
+      (b.score || 0) - (a.score || 0) ||
+      b.accuracy - a.accuracy ||
+      (a.timeTakenSec ?? Infinity) - (b.timeTakenSec ?? Infinity) ||
+      new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0)
+  );
+
+  let prev = null;
+  return enriched.map((s, idx) => {
+    const isTieWithPrev =
+      prev &&
+      prev.score === s.score &&
+      prev.accuracy === s.accuracy &&
+      prev.timeTakenSec === s.timeTakenSec;
+    const rank = isTieWithPrev ? prev.rank : idx + 1;
+    const row = { ...s, rank, isTie: false };
+    if (isTieWithPrev) {
+      row.isTie = true;
+      prev.isTie = true; // mark the first team of the tie as well
+    }
+    prev = row;
+    return row;
+  });
+};
 
 const AdminPanel = () => {
+  // Logged in = a token from the server is saved for this browser tab
   const [isAuthenticated, setIsAuthenticated] = useState(
-    sessionStorage.getItem("adminAuth") === "true"
+    Boolean(sessionStorage.getItem("adminToken"))
   );
   const [passwordInput, setPasswordInput] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [submissions, setSubmissions] = useState(INITIAL_MOCK_SUBMISSIONS);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -52,7 +111,15 @@ const AdminPanel = () => {
       toast.info("Refreshed latest quiz submissions!", { autoClose: 1500 });
     } catch (err) {
       console.error("Fetch submissions error:", err);
-      toast.error("Failed to fetch API submissions");
+      if (err.response?.status === 401) {
+        // Token missing, wrong or expired: go back to the login screen
+        sessionStorage.removeItem("adminToken");
+        sessionStorage.removeItem("adminAuth");
+        setIsAuthenticated(false);
+        toast.error("Session expired. Please log in again.");
+      } else {
+        toast.error("Failed to fetch API submissions");
+      }
     } finally {
       setLoading(false);
     }
@@ -64,44 +131,58 @@ const AdminPanel = () => {
     }
   }, [isAuthenticated]);
 
-  const handleLogin = (e) => {
+  // The server checks the password and sends back a token
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (passwordInput === ADMIN_PASSWORD) {
-      sessionStorage.setItem("adminAuth", "true");
+    if (!passwordInput || loginLoading) return;
+    setLoginLoading(true);
+    try {
+      const res = await axios.post(`${Default_url}/api/admin/login`, {
+        password: passwordInput,
+      });
+      sessionStorage.setItem("adminToken", res.data.token);
+      setPasswordInput("");
       setIsAuthenticated(true);
       toast.success("Welcome to Admin Control Panel!");
-    } else {
-      toast.error("Incorrect password! Access denied.");
+    } catch (err) {
+      const message =
+        err.response?.data?.message ||
+        "Could not reach the server. Please check your connection.";
+      toast.error(message);
+    } finally {
+      setLoginLoading(false);
     }
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem("adminToken");
     sessionStorage.removeItem("adminAuth");
+    setSubmissions([]);
     setIsAuthenticated(false);
     toast.info("Logged out of Admin Panel");
   };
 
-  // Filtered submissions based on search term
-  const filteredSubmissions = submissions.filter((item) =>
+  // Full leaderboard (ranks are computed on ALL teams, before searching)
+  const leaderboard = useMemo(() => buildLeaderboard(submissions), [submissions]);
+
+  // Search only hides rows, it never changes anyone's rank
+  const filteredSubmissions = leaderboard.filter((item) =>
     item.tCode?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Statistics calculation
-  const totalSubmissions = submissions.length;
+  const totalSubmissions = leaderboard.length;
 
   const avgScore = totalSubmissions
     ? (
-        submissions.reduce((acc, curr) => acc + (curr.score || 0), 0) /
+        leaderboard.reduce((acc, curr) => acc + (curr.score || 0), 0) /
         totalSubmissions
       ).toFixed(1)
     : 0;
 
-  // Find the top submission (Rank 1)
-  const topSubmission = totalSubmissions
-    ? submissions.reduce((prev, current) =>
-        (prev.score || 0) > (current.score || 0) ? prev : current
-      )
-    : null;
+  // Rank 1 = first row of the leaderboard (tie-breaks already applied)
+  const topSubmission = totalSubmissions ? leaderboard[0] : null;
+  const rank1Count = leaderboard.filter((s) => s.rank === 1).length;
 
   const topScore = topSubmission ? topSubmission.score : 0;
   const topTeamCode = topSubmission ? topSubmission.tCode : "N/A";
@@ -147,9 +228,10 @@ const AdminPanel = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all"
+              disabled={loginLoading}
+              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all disabled:opacity-50"
             >
-              Unlock Dashboard
+              {loginLoading ? "Checking..." : "Unlock Dashboard"}
             </button>
           </form>
         </div>
@@ -253,7 +335,19 @@ const AdminPanel = () => {
             </p>
             <p className="text-xs text-amber-400/80 font-semibold mt-0.5">
               Score: {topScore}%
+              {topSubmission && (
+                <>
+                  {" "}
+                  - Acc: {topSubmission.accuracy}% •{" "}
+                  {formatDuration(topSubmission.timeTakenSec)}
+                </>
+              )}
             </p>
+            {rank1Count > 1 && (
+              <p className="text-[11px] text-amber-300 font-semibold mt-0.5">
+                Joint Rank #1 with {rank1Count - 1} other team(s)
+              </p>
+            )}
           </div>
           <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center text-amber-400 shrink-0">
             <Trophy className="w-6 h-6" />
@@ -264,9 +358,14 @@ const AdminPanel = () => {
       {/* Submissions Table Section */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <h2 className="text-base font-bold text-white">
-            Candidate Submissions ({filteredSubmissions.length})
-          </h2>
+          <div>
+            <h2 className="text-base font-bold text-white">
+              Leaderboard ({filteredSubmissions.length})
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Ranked by Score → Accuracy → Time Taken → Submission Time
+            </p>
+          </div>
 
           <div className="relative w-full sm:w-64">
             <input
@@ -285,9 +384,12 @@ const AdminPanel = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-950 text-slate-400 uppercase font-mono border-b border-slate-800">
               <tr>
+                <th className="p-3.5">Rank</th>
                 <th className="p-3.5">Team Code</th>
                 <th className="p-3.5">Score</th>
+                <th className="p-3.5">Accuracy</th>
                 <th className="p-3.5">Attempted</th>
+                <th className="p-3.5">Time Taken</th>
                 <th className="p-3.5">Submission Time</th>
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
@@ -297,18 +399,14 @@ const AdminPanel = () => {
               {loading ? (
                 Array.from({ length: 5 }).map((_, idx) => (
                   <tr key={idx} className="animate-pulse">
-                    <td className="p-3.5">
-                      <div className="h-4 bg-slate-800 rounded w-24"></div>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="h-5 bg-slate-800 rounded w-12"></div>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="h-4 bg-slate-800 rounded w-16"></div>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="h-4 bg-slate-800 rounded w-32"></div>
-                    </td>
+                    {[10, 24, 12, 14, 16, 16, 32].map((w, i) => (
+                      <td key={i} className="p-3.5">
+                        <div
+                          className="h-4 bg-slate-800 rounded"
+                          style={{ width: `${w}px` }}
+                        ></div>
+                      </td>
+                    ))}
                     <td className="p-3.5 text-right">
                       <div className="h-7 bg-slate-800 rounded w-28 ml-auto"></div>
                     </td>
@@ -318,7 +416,7 @@ const AdminPanel = () => {
                 /* 2. Empty State */
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={8}
                     className="p-8 text-center text-slate-400 font-mono"
                   >
                     No submissions found.
@@ -327,13 +425,28 @@ const AdminPanel = () => {
               ) : (
                 /* 3. Render Submissions Data */
                 filteredSubmissions.map((sub) => {
-                  const attempted =
-                    sub.ans?.filter((a) => a.sel !== null).length || 0;
                   const isExpanded = expandedRow === sub.tCode;
+                  const medal =
+                    sub.rank === 1
+                      ? "🥇"
+                      : sub.rank === 2
+                      ? "🥈"
+                      : sub.rank === 3
+                      ? "🥉"
+                      : null;
 
                   return (
                     <React.Fragment key={sub.tCode}>
                       <tr className="hover:bg-slate-800/40 transition-all">
+                        <td className="p-3.5 font-mono font-bold text-amber-300 whitespace-nowrap">
+                          {medal && <span className="mr-1">{medal}</span>}#
+                          {sub.rank}
+                          {sub.isTie && (
+                            <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 align-middle">
+                              TIE
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3.5 font-mono font-bold text-indigo-400">
                           {sub.tCode}
                         </td>
@@ -348,8 +461,18 @@ const AdminPanel = () => {
                             {sub.score}%
                           </span>
                         </td>
+                        <td className="p-3.5 font-mono text-slate-200">
+                          {sub.accuracy}%
+                          <span className="text-slate-500">
+                            {" "}
+                            ({sub.correctCount}/{sub.attemptedCount})
+                          </span>
+                        </td>
                         <td className="p-3.5 font-mono text-slate-300">
-                          {attempted} / {QUESTIONS_DATA.length}
+                          {sub.attemptedCount} / {QUESTIONS_DATA.length}
+                        </td>
+                        <td className="p-3.5 font-mono text-slate-300">
+                          {formatDuration(sub.timeTakenSec)}
                         </td>
                         <td className="p-3.5 text-slate-400">
                           {new Date(
@@ -380,7 +503,7 @@ const AdminPanel = () => {
                       {isExpanded && (
                         <tr className="bg-slate-950/80">
                           <td
-                            colSpan={5}
+                            colSpan={8}
                             className="p-4 border-b border-slate-800"
                           >
                             <div className="space-y-3">
@@ -453,3 +576,4 @@ const AdminPanel = () => {
 };
 
 export default AdminPanel;
+
