@@ -568,7 +568,7 @@ export const QUESTIONS_DATA = [
       ],
       pa: ["A. ਜਨਰਲ AI", "B. ਸੁਪਰ AI", "C. ਨੈਰੋ AI", "D. ਮਨੁੱਖੀ ਬੁੱਧੀ"],
     },
-    answer: 2,
+    answer: 1,
   },
   {
     id: 3,
@@ -597,7 +597,7 @@ export const QUESTIONS_DATA = [
         "D. ਟੈਕਸਟ ਜਨਰੇਸ਼ਨ",
       ],
     },
-    answer: 0,
+    answer: 2,
   },
   {
     id: 4,
