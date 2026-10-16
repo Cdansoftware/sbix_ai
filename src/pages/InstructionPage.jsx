@@ -249,7 +249,7 @@ export default function InstructionPage({ onStartQuiz }) {
     "SBIX-JJN-AQ-14",
     "SBIX-GSP-AQ-07",
     "SBIX-LDG-AQ-16",
-    "SBIX-JNU-AQ-62"
+    "SBIX-PNB-AQ-62"
   ];
 
   // Inside your InstructionPage component:
