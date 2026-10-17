@@ -605,7 +605,8 @@ const ALLOWED_TEAM_CODES = [
   "SBIX-LDG-AQ-16",
   "SBIX-PNB-AQ-62",
   "SBIX-PNB-AQ-63",
-  "SBIX-CCC-AQ-44"
+  "SBIX-CCC-AQ-44",
+  "SBIX-XXX-AQ-66"
 ];
 
 // Multilingual Content Object
