@@ -21,6 +21,8 @@ export const allowedTeamCode = [
   "SBIX-JJN-AQ-14",
   "SBIX-GSP-AQ-07",
   "SBIX-LDG-AQ-16",
+  "SBIX-JNU-AQ-62",
+  "SBIX-SBS-AQ-14"
 ];
 
 // export const QUESTIONS_DATA = [
