@@ -25,6 +25,7 @@ const API_URL =
 const INITIAL_TIME = 600; // 10 minutes
 const MAX_VIOLATIONS = 3;
 const FULLSCREEN_GRACE_MS = 1500;
+const REQUEST_TIMEOUT_MS = 25000;
 
 const Quiz = () => {
   const location = useLocation();
@@ -54,6 +55,7 @@ const Quiz = () => {
   const mediaStreamRef = useRef(null);
   const submittedRef = useRef(false);
   const submitLockRef = useRef(false);
+  const startingLockRef = useRef(false);
   const violationsRef = useRef(0);
   const startedAtRef = useRef(0);
   const selectedAnswersRef = useRef(selectedAnswers);
@@ -144,6 +146,7 @@ const Quiz = () => {
     try {
       const response = await axios.post(`${API_URL}/api/quiz/submit`, payload, {
         headers: { "Content-Type": "application/json" },
+        timeout: REQUEST_TIMEOUT_MS,
       });
 
       console.log("Quiz submitted successfully:", response.data);
@@ -302,15 +305,15 @@ const Quiz = () => {
 
   // Request Camera Access + start quiz on server
   const requestCameraAccess = async () => {
-    if (isStarting) return;
+    if (isStarting || startingLockRef.current) return;
     setCameraError("");
+    startingLockRef.current = true;
     setIsStarting(true);
     let stream = null;
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraError("Camera feature is not supported in this browser.");
-        setIsStarting(false);
         return;
       }
 
@@ -327,12 +330,16 @@ const Quiz = () => {
       setCameraError(
         "Camera access is mandatory to enter the proctored quiz. Please grant camera permission.",
       );
-      setIsStarting(false);
       return;
+    } finally {
+      startingLockRef.current = false;
+      setIsStarting(false);
     }
 
     const stopStream = () => {
-      stream.getTracks().forEach((track) => track.stop());
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
@@ -342,10 +349,15 @@ const Quiz = () => {
       await document.documentElement.requestFullscreen().catch(() => {});
     }
 
+    setIsStarting(true);
+    startingLockRef.current = true;
+
     try {
-      const res = await axios.post(`${API_URL}/api/quiz/start`, {
-        tCode: TEAM_CODE,
-      });
+      const res = await axios.post(
+        `${API_URL}/api/quiz/start`,
+        { tCode: TEAM_CODE },
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
 
       const remaining = Number(res.data?.remainingSec);
 
@@ -373,6 +385,7 @@ const Quiz = () => {
           "Could not reach the server. Please check your internet and try again.",
       );
     } finally {
+      startingLockRef.current = false;
       setIsStarting(false);
     }
   };
@@ -452,7 +465,7 @@ const Quiz = () => {
           <button
             onClick={requestCameraAccess}
             disabled={isStarting}
-            className="w-full py-3.5 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             {isStarting ? (
               <>
@@ -470,7 +483,7 @@ const Quiz = () => {
               sessionStorage.removeItem("teamCode");
               navigate("/", { replace: true });
             }}
-            className="text-xs text-slate-500 hover:text-slate-300 underline"
+            className="text-xs text-slate-500 hover:text-slate-300 underline cursor-pointer"
           >
             Back to Home
           </button>
@@ -647,7 +660,7 @@ const Quiz = () => {
                       <button
                         key={optionIdx}
                         onClick={() => handleSelectOption(optionIdx)}
-                        className={`w-full text-left p-4 rounded-xl border transition-all text-sm flex items-center justify-between gap-3 ${
+                        className={`w-full text-left p-4 rounded-xl border transition-all text-sm flex items-center justify-between gap-3 cursor-pointer ${
                           isSelected
                             ? "bg-indigo-950/70 border-indigo-500 text-indigo-100 shadow-md shadow-indigo-950/30"
                             : "bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300"
@@ -675,7 +688,7 @@ const Quiz = () => {
                 <button
                   disabled={currentIdx === 0}
                   onClick={() => setCurrentIdx((prev) => Math.max(0, prev - 1))}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> Previous
                 </button>
@@ -687,7 +700,7 @@ const Quiz = () => {
                         Math.min(QUESTIONS_DATA.length - 1, prev + 1),
                       )
                     }
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-indigo-950/40"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-indigo-950/40 cursor-pointer"
                   >
                     Next <ChevronRight className="w-4 h-4" />
                   </button>
@@ -695,7 +708,7 @@ const Quiz = () => {
                   <button
                     onClick={handlePreSubmitClick}
                     disabled={isSubmitting}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/40"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/40 cursor-pointer"
                   >
                     Submit Quiz <Send className="w-3.5 h-3.5" />
                   </button>
@@ -740,7 +753,7 @@ const Quiz = () => {
                     key={idx}
                     disabled={submitted}
                     onClick={() => setCurrentIdx(idx)}
-                    className={`h-9 rounded-lg text-xs font-bold transition-all border flex items-center justify-center ${
+                    className={`h-9 rounded-lg text-xs font-bold transition-all border flex items-center justify-center cursor-pointer ${
                       isCurrent
                         ? "ring-2 ring-indigo-400 border-indigo-400 bg-indigo-900/80 text-white"
                         : isAnswered
@@ -783,7 +796,7 @@ const Quiz = () => {
             <button
               onClick={handlePreSubmitClick}
               disabled={isSubmitting}
-              className={`px-6 py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all ${
+              className={`px-6 py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 isSubmitting
                   ? "bg-indigo-800 cursor-not-allowed opacity-80"
                   : "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-950/50"
